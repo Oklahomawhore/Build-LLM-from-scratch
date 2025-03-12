@@ -10,19 +10,21 @@ from gpt_model import text_to_token_ids ,token_ids_to_text, generate_text_simple
 
 tokenizer = tiktoken.get_encoding("gpt2")
 
-file_path = "the-verdict.txt"
-url = "https://raw.githubusercontent.com/rasbt/LLMs-from-scratch/main/ch02/01_main-chapter-code/the-verdict.txt"
-device = "mps"
+def get_textdata():
+    file_path = "the-verdict.txt"
+    url = "https://raw.githubusercontent.com/rasbt/LLMs-from-scratch/main/ch02/01_main-chapter-code/the-verdict.txt"
+    device = "cuda"
 
-if not os.path.exists(file_path):
-    with urllib.request.urlopen(url) as response:
-        text_data = response.read().decode('utf-8')
-    with open(file_path, "w", encoding="utf-8") as file:
-        file.write(text_data)
-else:
-    with open(file_path, "r", encoding="utf-8") as file:
-        text_data = file.read()
-
+    if not os.path.exists(file_path):
+        with urllib.request.urlopen(url) as response:
+            text_data = response.read().decode('utf-8')
+        with open(file_path, "w", encoding="utf-8") as file:
+            file.write(text_data)
+    else:
+        with open(file_path, "r", encoding="utf-8") as file:
+            text_data = file.read()
+    return text_data
+text_data = get_textdata()
 print(text_data[:99])
 
 class GPTDatasetV1(Dataset):
@@ -143,13 +145,31 @@ def generate_and_print_sample(model, tokenizer, device, start_context):
     print(decoded_text.replace("\n"," "))
     model.train()
 
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+
+def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses):
+    fig, ax1 = plt.subplots(figsize=(5,3))
+    ax1.plot(epochs_seen ,train_losses, label="Training Loss")
+    ax1.plot(epochs_seen, val_losses, label="Validation Loss", linestyle="-.")
+    ax1.set_xlabel("Epochs")
+    ax1.set_ylabel("Loss")
+    ax1.legend(loc="upper right")
+    ax1.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax2 = ax1.twiny()
+    ax2.plot(tokens_seen, train_losses, alpha=0)
+    ax2.set_xlabel("Tokens Seen")
+    fig.tight_layout()
+    plt.show()
+    plt.savefig("loss_plot.png")
 
 def main():
+    device = 'cuda'
     torch.manual_seed(123)
     model = GPTModel(GPT_CONFIG_124M)
     model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.1)
-    num_epochs = 10
+    num_epochs = 1
 
     total_characters = len(text_data)
     total_tokens = len(tokenizer.encode(text_data))
@@ -172,7 +192,20 @@ def main():
     print("\nValidation loader:")
     for x, y in val_loader:
         print(x.shape, y.shape)
+    if os.path.exists('model_and_optimizer.pth'):
+        model_and_optimizer = torch.load('model_and_optimizer.pth')
+        model_state_dict, optimizer_state_dict = model_and_optimizer['model_state_dict'], model_and_optimizer['optimizer_state_dict']
+    
+        model.load_state_dict(model_state_dict)
+        optimizer.load_state_dict(optimizer_state_dict)
     train_losses, val_losses, tokens_seen = train_model_simple(model, train_loader, val_loader, optimizer, device, num_epochs=num_epochs, eval_freq=5, eval_iter=5, start_context="Every effort moves you", tokenizer=tokenizer)
+
+    torch.save({
+        'model_state_dict' : model.state_dict(),
+        'optimizer_state_dict' : optimizer.state_dict()
+    }, 'model_and_optimizer.pth')
+    epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+    plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
 
 if __name__ == '__main__':
     main()

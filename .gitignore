@@ -169,3 +169,14 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+
+# Models
+gpt2/
+lambada/
+sms_spam_collection/
+*.png
+*.gz
+*.pth
+*.pt
+*.zip
